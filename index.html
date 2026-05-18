@@ -420,7 +420,7 @@
     <div class="toolbar-group">
       <label>NOTES</label>
       <div class="search-wrap">
-        <input type="text" id="note-search" placeholder="G, B, D" oninput="onNoteSearch(this.value)" />
+        <input type="text" id="note-search" placeholder="G, B, D" oninput="normalizeInput(this); onNoteSearch(this.value)" />
         <button class="clear-btn" onclick="clearNoteSearch()">×</button>
       </div>
     </div>
@@ -428,7 +428,7 @@
     <div class="toolbar-group">
       <label>CHORD</label>
       <div class="search-wrap">
-        <input type="text" id="chord-search" placeholder="Am, G7" oninput="onChordSearch(this.value)" />
+        <input type="text" id="chord-search" placeholder="Am, G7" oninput="normalizeInput(this); onChordSearch(this.value)" />
         <button class="clear-btn" onclick="clearChordSearch()">×</button>
       </div>
     </div>
@@ -436,6 +436,7 @@
     <div class="toolbar-group">
       <button onclick="insertBar()">| Bar</button>
       <button onclick="undo()">← Undo</button>
+      <button onclick="clearTab()" style="color:#c0392b;">✕ Clear</button>
     </div>
 
     <div class="toolbar-group">
@@ -463,6 +464,7 @@
   <span>CURSOR: <span class="status-val" id="st-cursor">0</span></span>
   <span>BEATS: <span class="status-val" id="st-beats">0</span></span>
   <span>COLORS: <span class="status-val" id="st-colors">Off</span></span>
+  <span style="margin-left:auto">Shift+click fret to stack into current beat &nbsp;|&nbsp; Select beat + [ ] to adjust spacing &nbsp;|&nbsp; ← → arrow keys move cursor</span>
 </div>
 
 <script>
@@ -499,6 +501,7 @@ const CHORDS = {
 // ─── State ───────────────────────────────────────────────────────────────────
 
 let composition = []; // [{type:'notes', notes:[...]}, {type:'bar'}]
+let beatWidths = {};  // idx -> extra padding (0 = default)
 let cursorPos = 0;    // insertion point (0 = before first column)
 let selectedCol = -1; // index into composition, -1 = none selected
 let inputMode = 'single'; // 'single' | 'chord'
@@ -569,7 +572,7 @@ function buildFretboard() {
 
       renderFretCell(td, note);
 
-      td.addEventListener('click', () => onFretClick(s, f));
+      td.addEventListener('click', (e) => onFretClick(s, f, e.shiftKey));
       tr.appendChild(td);
     }
     table.appendChild(tr);
@@ -791,14 +794,15 @@ function renderTab() {
 function renderTabAsRows(container) {
   // Each string gets a row; columns are aligned by making each column span same width
   // Pre-compute column widths
-  const widths = composition.map(entry => {
-    if (entry.type === 'bar') return 3; // ' | '
+  const widths = composition.map((entry, idx) => {
+    const extra = beatWidths[idx] || 0;
+    if (entry.type === 'bar') return 3 + extra;
     const maxFret = entry.notes.reduce((mx, v) => {
       if (v === null) return mx;
       const w = String(v).length;
       return w > mx ? w : mx;
     }, 1);
-    return maxFret + 2; // dash + fret + dash
+    return maxFret + 2 + extra; // dash + fret + dash + extra
   });
 
   for (let s = 0; s < 6; s++) {
@@ -815,13 +819,22 @@ function renderTabAsRows(container) {
     lbl.style.color = 'var(--text-dim)';
     row.appendChild(lbl);
 
-    // Opening dash
+    // Opening dash — clicking it sets cursor to 0
     const odash = document.createElement('span');
     odash.className = 'tab-dash';
     odash.textContent = '-';
+    if (s === 0) {
+      odash.style.cursor = 'text';
+      odash.addEventListener('click', (e) => {
+        e.stopPropagation();
+        cursorPos = 0;
+        selectedCol = -1;
+        renderTab();
+      });
+    }
     row.appendChild(odash);
 
-    // Cursor at 0 (only on string 0 for visual, but we do it per-string as invisible except s==0)
+    // Cursor at 0
     if (cursorPos === 0) {
       row.appendChild(makeCursorCell(s));
     }
@@ -839,15 +852,26 @@ function renderTabAsRows(container) {
 
       colSpan.dataset.idx = idx;
       colSpan.dataset.string = s;
-      if (s === 0) { // only add click on top string row to avoid duplicate
-        colSpan.addEventListener('click', (e) => { e.stopPropagation(); onTabColClick(idx); });
-      } else {
-        colSpan.addEventListener('click', (e) => { e.stopPropagation(); onTabColClick(idx); });
-      }
+      colSpan.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Click on a beat: select it AND position cursor after it
+        // But if clicking near the left edge, position cursor before it
+        const rect = colSpan.getBoundingClientRect();
+        const relX = e.clientX - rect.left;
+        if (relX < rect.width * 0.3) {
+          // Left third: cursor before this beat
+          cursorPos = idx;
+        } else {
+          // Right two-thirds: select and cursor after
+          cursorPos = idx + 1;
+        }
+        selectedCol = (selectedCol === idx) ? -1 : idx;
+        renderTab();
+      });
 
       let text = '';
       if (entry.type === 'bar') {
-        text = '-|-';
+        text = '-|-' + '-'.repeat(beatWidths[idx] || 0);
       } else {
         const fretVal = entry.notes[s];
         if (fretVal === null) {
@@ -855,7 +879,6 @@ function renderTabAsRows(container) {
         } else {
           const numStr = String(fretVal);
           text = '-' + numStr + '-';
-          // pad to width
           while (text.length < w) text += '-';
         }
       }
@@ -907,7 +930,18 @@ function makeCursor() {
 
 // ─── Fret Click ───────────────────────────────────────────────────────────────
 
-function onFretClick(stringIdx, fret) {
+function onFretClick(stringIdx, fret, shiftHeld) {
+  if (shiftHeld && cursorPos > 0) {
+    // Shift+click: add note to the beat just before the cursor (stack into it)
+    const targetIdx = cursorPos - 1;
+    if (composition[targetIdx] && composition[targetIdx].type === 'notes') {
+      composition[targetIdx].notes[stringIdx] = fret;
+      renderTab();
+      saveLocal();
+      return;
+    }
+  }
+
   if (inputMode === 'single') {
     // If a column is selected, overwrite it
     if (selectedCol >= 0 && composition[selectedCol] && composition[selectedCol].type === 'notes') {
@@ -989,7 +1023,16 @@ function insertBar() {
 
 function undo() {
   if (cursorPos > 0) {
-    composition.splice(cursorPos - 1, 1);
+    const removedIdx = cursorPos - 1;
+    composition.splice(removedIdx, 1);
+    // Shift beatWidths keys down
+    const newBW = {};
+    Object.keys(beatWidths).forEach(k => {
+      const ki = parseInt(k);
+      if (ki < removedIdx) newBW[ki] = beatWidths[k];
+      else if (ki > removedIdx) newBW[ki - 1] = beatWidths[k];
+    });
+    beatWidths = newBW;
     cursorPos--;
     if (selectedCol >= cursorPos) selectedCol = -1;
     if (openChordIdx >= cursorPos) openChordIdx = -1;
@@ -1001,6 +1044,15 @@ function undo() {
 function deleteSelected() {
   if (selectedCol >= 0) {
     composition.splice(selectedCol, 1);
+    // Shift beatWidths keys down
+    const newBW = {};
+    Object.keys(beatWidths).forEach(k => {
+      const ki = parseInt(k);
+      if (ki < selectedCol) newBW[ki] = beatWidths[k];
+      else if (ki > selectedCol) newBW[ki - 1] = beatWidths[k];
+      // ki === selectedCol is dropped
+    });
+    beatWidths = newBW;
     if (cursorPos > selectedCol) cursorPos--;
     selectedCol = -1;
     renderTab();
@@ -1051,14 +1103,17 @@ function onChordSearch(val) {
   document.getElementById('note-search').value = '';
   const chord = CHORDS[chordSearchRaw];
   if (chord) {
-    // Highlight exact fret positions for this voicing
+    // Highlight ALL fretboard positions that match any note in this chord voicing
+    // First figure out which notes are in this chord
     highlightedPositions = new Set();
-    highlightedNotes = new Set();
+    const chordNotes = new Set();
     chord.forEach((fret, sIdx) => {
       if (fret !== null) {
-        highlightedPositions.add(sIdx + ',' + fret);
+        chordNotes.add(fretNote(sIdx, fret));
       }
     });
+    // Now highlight every position on the neck that is one of those notes
+    highlightedNotes = chordNotes;
   } else {
     highlightedPositions = new Set();
     highlightedNotes = new Set();
@@ -1095,7 +1150,7 @@ function updateStatus() {
 function saveLocal() {
   try {
     localStorage.setItem('guitar_tab_editor', JSON.stringify({
-      composition, cursorPos, fretCount, colorMode,
+      composition, cursorPos, fretCount, colorMode, beatWidths,
       title: document.getElementById('song-title').value
     }));
   } catch(e) {}
@@ -1107,6 +1162,7 @@ function loadLocal() {
     if (!raw) return;
     const data = JSON.parse(raw);
     composition = data.composition || [];
+    beatWidths = data.beatWidths || {};
     cursorPos = data.cursorPos || 0;
     fretCount = data.fretCount || 18;
     colorMode = data.colorMode || 'off';
@@ -1122,8 +1178,8 @@ function loadLocal() {
 function saveProject() {
   const data = {
     title: document.getElementById('song-title').value,
-    composition, cursorPos, fretCount, colorMode,
-    version: '10'
+    composition, cursorPos, fretCount, colorMode, beatWidths,
+    version: '11'
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
   const a = document.createElement('a');
@@ -1140,6 +1196,7 @@ function loadProject(input) {
     try {
       const data = JSON.parse(e.target.result);
       composition = data.composition || [];
+      beatWidths = data.beatWidths || {};
       cursorPos = data.cursorPos || 0;
       fretCount = data.fretCount || 18;
       colorMode = data.colorMode || 'off';
@@ -1155,19 +1212,43 @@ function loadProject(input) {
   input.value = '';
 }
 
+function clearTab() {
+  if (composition.length === 0) return;
+  if (!confirm('Clear the tab and start fresh?')) return;
+  composition = [];
+  beatWidths = {};
+  cursorPos = 0;
+  selectedCol = -1;
+  openChordIdx = -1;
+  document.getElementById('song-title').value = '';
+  document.getElementById('song-title-print').textContent = '';
+  renderTab();
+  saveLocal();
+}
+
+function normalizeInput(input) {
+  // Capitalize first letter of each comma-separated token, preserve rest
+  const pos = input.selectionStart;
+  input.value = input.value.replace(/(?:^|,\s*)([a-z])/g, (match, ch, offset) => {
+    return match.slice(0, match.length - 1) + ch.toUpperCase();
+  });
+  input.setSelectionRange(pos, pos);
+}
+
 function saveText() {
   const title = document.getElementById('song-title').value;
   let text = title ? title + '\n\n' : '';
 
   // Build tab as plain text
-  const widths = composition.map(entry => {
-    if (entry.type === 'bar') return 3;
+  const widths = composition.map((entry, idx) => {
+    const extra = beatWidths[idx] || 0;
+    if (entry.type === 'bar') return 3 + extra;
     const maxFret = entry.notes.reduce((mx, v) => {
       if (v === null) return mx;
       const w = String(v).length;
       return w > mx ? w : mx;
     }, 1);
-    return maxFret + 2;
+    return maxFret + 2 + extra;
   });
 
   for (let s = 0; s < 6; s++) {
@@ -1213,6 +1294,20 @@ document.addEventListener('keydown', e => {
   } else if (e.key === 'Delete' || e.key === 'Backspace') {
     if (selectedCol >= 0) deleteSelected();
     else undo();
+  } else if (e.key === ']') {
+    // Widen selected beat
+    if (selectedCol >= 0) {
+      beatWidths[selectedCol] = (beatWidths[selectedCol] || 0) + 1;
+      renderTab();
+      saveLocal();
+    }
+  } else if (e.key === '[') {
+    // Narrow selected beat (min 0 extra)
+    if (selectedCol >= 0) {
+      beatWidths[selectedCol] = Math.max(0, (beatWidths[selectedCol] || 0) - 1);
+      renderTab();
+      saveLocal();
+    }
   }
 });
 

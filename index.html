@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guitar Tab Editor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Bebas+Neue&display=swap');
+
+  :root {
+    --bg: #f5f5f2;
+    --surface: #ffffff;
+    --surface2: #f0f0ed;
+    --border: #d0d0cc;
+    --text: #1a1a1a;
+    --text-dim: #888;
+    --accent: #2e7d32;
+    --accent-bright: #2e7d32;
+    --cursor-color: #2e7d32;
+    --select-color: #6d28d9;
+    --chord-open: rgba(46,125,50,0.12);
+
+    /* 12-note colors */
+    --c:  #e74c3c;
+    --cs: #e8623a;
+    --d:  #e67e22;
+    --ds: #d4a017;
+    --e:  #9aaa00;
+    --f:  #5cb85c;
+    --fs: #20a060;
+    --g:  #17a2a2;
+    --gs: #2980b9;
+    --a:  #3455db;
+    --as: #7d3fcc;
+    --b:  #b03ab0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .app-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 2px;
+    color: var(--accent-bright);
+    white-space: nowrap;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1;
+  }
+
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border-left: 1px solid var(--border);
+  }
+
+  .toolbar-group:first-child { border-left: none; }
+
+  label { color: var(--text-dim); font-size: 11px; white-space: nowrap; }
+
+  button {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  button:hover { background: #e4e4e0; border-color: #bbb; }
+  button.active { background: var(--accent); border-color: var(--accent-bright); color: #fff; }
+
+  select {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  input[type=text] {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    width: 90px;
+    outline: none;
+  }
+
+  input[type=text]:focus { border-color: var(--accent); }
+
+  .clear-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 2px 5px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .clear-btn:hover { color: var(--text); background: none; border: none; }
+
+  /* Three-way toggle */
+  .toggle-3way {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .toggle-3way button {
+    border: none;
+    border-radius: 0;
+    border-right: 1px solid var(--border);
+    padding: 5px 9px;
+    font-size: 10px;
+  }
+  .toggle-3way button:last-child { border-right: none; }
+  .toggle-3way button.active { background: var(--accent); color: #fff; }
+
+  /* Main layout */
+  .main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Fretboard */
+  #fretboard-wrap {
+    overflow-x: auto;
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    padding: 12px 12px 8px;
+    flex-shrink: 0;
+  }
+
+  #fretboard {
+    border-collapse: collapse;
+    min-width: max-content;
+  }
+
+  #fretboard th {
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 400;
+    padding: 0 2px 4px;
+    text-align: center;
+    width: 36px;
+  }
+
+  #fretboard td {
+    width: 36px;
+    height: 32px;
+    text-align: center;
+    vertical-align: middle;
+    cursor: pointer;
+    border: 1px solid #d8d8d4;
+    border-left: none;
+    border-right: none;
+    position: relative;
+    font-size: 11px;
+    font-weight: 500;
+    user-select: none;
+    transition: background 0.1s;
+  }
+
+  /* Fret lines */
+  #fretboard td::before {
+    content: '';
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 1px;
+    background: #ccc;
+  }
+
+  /* Nut (fret 0 right border thicker) */
+  #fretboard td.nut::after {
+    content: '';
+    position: absolute;
+    right: -1px; top: 0; bottom: 0;
+    width: 3px;
+    background: #888;
+    z-index: 1;
+  }
+
+  /* String label cells */
+  .string-label {
+    width: 24px !important;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    border: none !important;
+    text-align: right;
+    padding-right: 6px;
+    cursor: default !important;
+    background: transparent !important;
+  }
+  .string-label::before { display: none !important; }
+
+  #fretboard td:hover:not(.string-label) { background: #e8e8e4; }
+
+  /* Dot markers */
+  .dot-row td { height: 10px; font-size: 8px; color: #bbb; border: none; background: transparent !important; cursor: default; }
+  .dot-row td::before { display: none; }
+  .dot-row td.has-dot::after { content: '●'; position: static; width: auto; background: none; color: #bbb; }
+
+  /* Tab output */
+  #tab-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: var(--bg);
+  }
+
+  #tab-container {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre;
+    position: relative;
+  }
+
+  .tab-line-group {
+    margin-bottom: 4px;
+    position: relative;
+  }
+
+  .tab-string-row {
+    display: flex;
+    align-items: center;
+    height: 22px;
+  }
+
+  .tab-string-label {
+    color: var(--text-dim);
+    width: 20px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .tab-ruler {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+
+  .tab-col {
+    display: inline-flex;
+    flex-direction: column;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .tab-col .tab-cell {
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    padding: 0 1px;
+  }
+
+  .tab-col.selected .tab-cell { background: rgba(124,58,237,0.25); }
+  .tab-col.open-chord .tab-cell { background: rgba(76,175,80,0.12); }
+
+  .tab-dash {
+    color: var(--text-dim);
+  }
+
+  .tab-num {
+    color: var(--text);
+  }
+
+  .tab-bar .tab-cell {
+    color: #aaa;
+    min-width: 12px;
+  }
+
+  /* Cursor */
+  .tab-cursor {
+    display: inline-flex;
+    flex-direction: column;
+    pointer-events: none;
+    position: relative;
+  }
+
+  .tab-cursor .cur-cell {
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 6px;
+    color: var(--cursor-color);
+    font-size: 14px;
+  }
+
+  /* Status bar */
+  #statusbar {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 4px 12px;
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 16px;
+  }
+
+  .status-val { color: var(--text); }
+
+  /* Song title */
+  #song-title {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1px;
+    padding: 2px 4px;
+    width: 200px;
+    outline: none;
+  }
+  #song-title::placeholder { color: var(--text-dim); }
+  #song-title:focus { border-bottom-color: var(--accent); }
+
+  /* Save/load */
+  #file-input { display: none; }
+
+  /* Print styles */
+  @media print {
+    header, #statusbar, .toolbar { display: none !important; }
+    #fretboard-wrap { display: none !important; }
+    body { background: white; color: black; }
+    #tab-container { color: black; font-size: 14px; }
+    .tab-string-label { color: #333; }
+    .tab-dash { color: #aaa; }
+    #song-title-print { display: block !important; font-size: 24px; font-weight: bold; margin-bottom: 16px; }
+  }
+
+  #song-title-print { display: none; }
+</style>
+</head>
+<body>
+
+<div id="song-title-print"></div>
+
+<header>
+  <span class="app-title">TAB EDITOR</span>
+  <input type="text" id="song-title" placeholder="Song title..." maxlength="60" />
+
+  <div class="toolbar">
+
+    <div class="toolbar-group">
+      <label>MODE</label>
+      <button id="mode-btn" onclick="toggleMode()">♩ Single</button>
+      <button id="next-beat-btn" onclick="nextBeat()" style="display:none">Next Beat →</button>
+    </div>
+
+    <div class="toolbar-group">
+      <label>FRETS</label>
+      <select id="fret-count" onchange="setFretCount(this.value)">
+        <option value="12">12</option>
+        <option value="16">16</option>
+        <option value="18" selected>18</option>
+        <option value="22">22</option>
+      </select>
+    </div>
+
+    <div class="toolbar-group">
+      <label>COLORS</label>
+      <div class="toggle-3way">
+        <button id="color-off" class="active" onclick="setColorMode('off')">Off</button>
+        <button id="color-text" onclick="setColorMode('text')">Text</button>
+        <button id="color-fill" onclick="setColorMode('fill')">Fill</button>
+      </div>
+    </div>
+
+    <div class="toolbar-group">
+      <label>NOTES</label>
+      <div class="search-wrap">
+        <input type="text" id="note-search" placeholder="G, B, D" oninput="onNoteSearch(this.value)" />
+        <button class="clear-btn" onclick="clearNoteSearch()">×</button>
+      </div>
+    </div>
+
+    <div class="toolbar-group">
+      <label>CHORD</label>
+      <div class="search-wrap">
+        <input type="text" id="chord-search" placeholder="Am, G7" oninput="onChordSearch(this.value)" />
+        <button class="clear-btn" onclick="clearChordSearch()">×</button>
+      </div>
+    </div>
+
+    <div class="toolbar-group">
+      <button onclick="insertBar()">| Bar</button>
+      <button onclick="undo()">← Undo</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button onclick="saveText()">Save .txt</button>
+      <button onclick="saveProject()">Save JSON</button>
+      <button onclick="document.getElementById('file-input').click()">Load JSON</button>
+      <input type="file" id="file-input" accept=".json" onchange="loadProject(this)" />
+      <button onclick="window.print()">Print</button>
+    </div>
+
+  </div>
+</header>
+
+<div class="main">
+  <div id="fretboard-wrap">
+    <table id="fretboard"></table>
+  </div>
+  <div id="tab-wrap">
+    <div id="tab-container"></div>
+  </div>
+</div>
+
+<div id="statusbar">
+  <span>MODE: <span class="status-val" id="st-mode">Single Note</span></span>
+  <span>CURSOR: <span class="status-val" id="st-cursor">0</span></span>
+  <span>BEATS: <span class="status-val" id="st-beats">0</span></span>
+  <span>COLORS: <span class="status-val" id="st-colors">Off</span></span>
+</div>
+
+<script>
+// ─── Data ────────────────────────────────────────────────────────────────────
+
+const STRING_MIDI = [64, 59, 55, 50, 45, 40]; // e B G D A E (high to low)
+const STRING_NAMES = ['e', 'B', 'G', 'D', 'A', 'E'];
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NOTE_COLORS = {
+  'C':  '#e74c3c', 'C#': '#e8623a', 'D':  '#e67e22', 'D#': '#d4a017',
+  'E':  '#9aaa00', 'F':  '#5cb85c', 'F#': '#20a060', 'G':  '#17a2a2',
+  'G#': '#2980b9', 'A':  '#3455db', 'A#': '#7d3fcc', 'B':  '#b03ab0'
+};
+const ENHARMONICS = { 'Db':'C#','Eb':'D#','Fb':'E','Gb':'F#','Ab':'G#','Bb':'A#','Cb':'B' };
+
+// Chord dictionary: [e, B, G, D, A, E] fret numbers, null = muted
+const CHORDS = {
+  'C':    [0,1,0,2,3,null], 'Cm':   [3,4,5,5,3,null], 'C7':   [0,1,3,2,3,null],
+  'Cmaj7':[0,0,0,2,3,null], 'C#':   [4,6,6,6,4,null], 'C#m':  [4,5,6,6,4,null],
+  'Db':   [4,6,6,6,4,null], 'D':    [2,3,2,0,null,null], 'Dm':  [1,3,2,0,null,null],
+  'D7':   [2,1,2,0,null,null], 'Dmaj7':[2,2,2,0,null,null], 'Eb':  [3,4,3,1,null,null],
+  'D#':   [3,4,3,1,null,null], 'E':   [0,0,1,2,2,0], 'Em':   [0,0,0,2,2,0],
+  'E7':   [0,0,1,0,2,0], 'Em7':  [0,0,0,0,2,0], 'F':    [1,1,2,3,3,1],
+  'Fm':   [1,1,1,3,3,1], 'F7':   [1,1,2,0,3,1], 'F#':   [2,2,3,4,4,2],
+  'F#m':  [2,2,2,4,4,2], 'Gb':   [2,2,3,4,4,2], 'G':    [3,0,0,0,2,3],
+  'Gm':   [3,3,3,5,5,3], 'G7':   [1,0,0,0,2,3], 'Gmaj7':[2,0,0,0,2,3],
+  'G#':   [4,4,5,6,6,4], 'Ab':   [4,4,5,6,6,4], 'A':    [0,2,2,2,0,null],
+  'Am':   [0,1,2,2,0,null], 'A7':  [0,2,0,2,0,null], 'Am7': [0,1,0,2,0,null],
+  'Amaj7':[0,2,1,2,0,null], 'A#':  [1,3,3,3,1,null], 'Bb':  [1,3,3,3,1,null],
+  'Bbm':  [1,2,3,3,1,null], 'B':   [2,4,4,4,2,null], 'Bm':  [2,3,4,4,2,null],
+  'B7':   [0,2,1,2,2,null], 'Bm7': [2,3,2,4,2,null]
+};
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+let composition = []; // [{type:'notes', notes:[...]}, {type:'bar'}]
+let cursorPos = 0;    // insertion point (0 = before first column)
+let selectedCol = -1; // index into composition, -1 = none selected
+let inputMode = 'single'; // 'single' | 'chord'
+let openChordIdx = -1; // index of the currently open chord beat
+let fretCount = 18;
+let colorMode = 'off'; // 'off' | 'text' | 'fill'
+let noteSearchRaw = '';
+let chordSearchRaw = '';
+let highlightedNotes = new Set(); // canonical note names to highlight on fretboard
+let highlightedPositions = new Set(); // "stringIdx,fret" keys for chord voicing highlights
+
+// ─── Note helpers ─────────────────────────────────────────────────────────────
+
+function midiToNote(midi) {
+  return NOTE_NAMES[midi % 12];
+}
+
+function fretNote(stringIdx, fret) {
+  return midiToNote(STRING_MIDI[stringIdx] + fret);
+}
+
+function canonicalNote(raw) {
+  raw = raw.trim();
+  if (ENHARMONICS[raw]) return ENHARMONICS[raw];
+  return raw;
+}
+
+function noteColor(noteName) {
+  return NOTE_COLORS[noteName] || '#888';
+}
+
+// ─── Fretboard ────────────────────────────────────────────────────────────────
+
+const DOTS = [3,5,7,9,12,15,17,19,21];
+const DOUBLE_DOTS = [12,24];
+
+function buildFretboard() {
+  const table = document.getElementById('fretboard');
+  table.innerHTML = '';
+
+  // Header row (fret numbers)
+  const hrow = document.createElement('tr');
+  let th0 = document.createElement('th'); hrow.appendChild(th0); // spacer
+  for (let f = 0; f <= fretCount; f++) {
+    const th = document.createElement('th');
+    th.textContent = f === 0 ? '' : f;
+    hrow.appendChild(th);
+  }
+  table.appendChild(hrow);
+
+  // String rows
+  for (let s = 0; s < 6; s++) {
+    const tr = document.createElement('tr');
+
+    // String label
+    const label = document.createElement('td');
+    label.className = 'string-label';
+    label.textContent = STRING_NAMES[s];
+    tr.appendChild(label);
+
+    for (let f = 0; f <= fretCount; f++) {
+      const td = document.createElement('td');
+      if (f === 0) td.classList.add('nut');
+      const note = fretNote(s, f);
+      td.dataset.string = s;
+      td.dataset.fret = f;
+      td.dataset.note = note;
+
+      renderFretCell(td, note);
+
+      td.addEventListener('click', () => onFretClick(s, f));
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+
+  // Dot row
+  const drow = document.createElement('tr');
+  drow.className = 'dot-row';
+  let dtd0 = document.createElement('td'); drow.appendChild(dtd0);
+  for (let f = 0; f <= fretCount; f++) {
+    const dtd = document.createElement('td');
+    if (DOUBLE_DOTS.includes(f)) dtd.classList.add('has-dot');
+    else if (DOTS.includes(f)) dtd.classList.add('has-dot');
+    drow.appendChild(dtd);
+  }
+  table.appendChild(drow);
+}
+
+function renderFretCell(td, note) {
+  const sIdx = parseInt(td.dataset.string);
+  const fret = parseInt(td.dataset.fret);
+  const posKey = sIdx + ',' + fret;
+
+  // Determine highlight state: position-based (chord) takes priority over note-name
+  const hasPositionSearch = highlightedPositions.size > 0;
+  const hasNoteSearch = highlightedNotes.size > 0;
+  const isPositionHighlighted = hasPositionSearch && highlightedPositions.has(posKey);
+  const isNoteHighlighted = hasNoteSearch && highlightedNotes.has(note);
+  const isHighlighted = isPositionHighlighted || isNoteHighlighted;
+  const hasAnySearch = hasPositionSearch || hasNoteSearch;
+
+  const color = noteColor(note);
+
+  td.textContent = note;
+  td.style.color = '';
+  td.style.background = '';
+  td.style.fontWeight = '500';
+  td.style.outline = '';
+  td.style.outlineOffset = '';
+
+  if (colorMode === 'off') {
+    if (!hasAnySearch) {
+      td.style.color = '#bbb';
+    } else {
+      if (isHighlighted) {
+        td.style.background = color;
+        td.style.color = '#fff';
+        td.style.fontWeight = '700';
+      } else {
+        td.style.color = '#ddd';
+      }
+    }
+  } else if (colorMode === 'text') {
+    if (!hasAnySearch) {
+      td.style.color = color;
+    } else {
+      if (isHighlighted) {
+        td.style.background = color;
+        td.style.color = '#fff';
+        td.style.fontWeight = '700';
+      } else {
+        td.style.color = '#ddd';
+      }
+    }
+  } else if (colorMode === 'fill') {
+    if (!hasAnySearch) {
+      td.style.background = color;
+      td.style.color = '#fff';
+    } else {
+      if (isHighlighted) {
+        td.style.background = color;
+        td.style.color = '#fff';
+        td.style.fontWeight = '700';
+      } else {
+        td.style.background = '#efefec';
+        td.style.color = '#ddd';
+      }
+    }
+  }
+
+  // For muted strings in chord voicing: dim the whole string's nut cell
+  if (hasPositionSearch && !hasNoteSearch) {
+    // Check if this string has any position highlighted (if not, it's muted)
+    // We only want to dim the open/nut area for muted strings, not every fret
+    // This is handled implicitly: fret 0 won't be in highlightedPositions for muted strings
+  }
+}
+
+function refreshFretboard() {
+  const cells = document.querySelectorAll('#fretboard td[data-note]');
+  cells.forEach(td => renderFretCell(td, td.dataset.note));
+}
+
+// ─── Tab Rendering ────────────────────────────────────────────────────────────
+
+function renderTab() {
+  const container = document.getElementById('tab-container');
+  container.innerHTML = '';
+
+  const group = document.createElement('div');
+  group.className = 'tab-line-group';
+
+  // Build 6 string rows + cursor row as arrays of spans
+  const stringRows = Array.from({length: 6}, () => {
+    const row = document.createElement('div');
+    row.className = 'tab-string-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'tab-string-label';
+    lbl.textContent = STRING_NAMES[6 - 1 - (6 - 1)] ; // will fix below
+    row.appendChild(lbl);
+    return row;
+  });
+
+  // Fix labels (high e at top = stringIdx 0)
+  for (let s = 0; s < 6; s++) {
+    stringRows[s].querySelector('.tab-string-label').textContent = STRING_NAMES[s];
+  }
+
+  // Opening dashes
+  for (let s = 0; s < 6; s++) {
+    const dash = document.createElement('span');
+    dash.className = 'tab-dash';
+    dash.textContent = '-';
+    stringRows[s].appendChild(dash);
+  }
+
+  // Build ruler
+  const ruler = document.createElement('div');
+  ruler.className = 'tab-ruler';
+
+  // Insert cursor at position 0 if cursorPos === 0
+  if (cursorPos === 0) ruler.appendChild(makeCursor());
+
+  composition.forEach((entry, idx) => {
+    const col = document.createElement('span');
+    col.className = 'tab-col';
+    if (idx === selectedCol) col.classList.add('selected');
+    if (inputMode === 'chord' && idx === openChordIdx) col.classList.add('open-chord');
+
+    col.dataset.idx = idx;
+    col.addEventListener('click', (e) => { e.stopPropagation(); onTabColClick(idx); });
+
+    if (entry.type === 'bar') {
+      for (let s = 0; s < 6; s++) {
+        const cell = document.createElement('span');
+        cell.className = 'tab-cell';
+        cell.style.minWidth = '14px';
+        const dash = document.createElement('span');
+        dash.className = 'tab-dash';
+        dash.textContent = '-';
+        const bar = document.createElement('span');
+        bar.textContent = '|';
+        bar.style.color = '#888';
+        const dash2 = document.createElement('span');
+        dash2.className = 'tab-dash';
+        dash2.textContent = '-';
+        cell.appendChild(dash);
+        cell.appendChild(bar);
+        cell.appendChild(dash2);
+        col.appendChild(cell);
+      }
+    } else {
+      // notes
+      const notes = entry.notes; // [s0..s5]
+      for (let s = 0; s < 6; s++) {
+        const cell = document.createElement('span');
+        cell.className = 'tab-cell';
+        const fretVal = notes[s];
+
+        if (fretVal === null) {
+          const dash = document.createElement('span');
+          dash.className = 'tab-dash';
+          // Width matching: use dashes equal to max width
+          const maxWidth = notes.reduce((mx, v) => {
+            if (v === null) return mx;
+            const w = String(v).length;
+            return w > mx ? w : mx;
+          }, 1);
+          dash.textContent = '-'.repeat(maxWidth);
+          cell.appendChild(dash);
+        } else {
+          const pre = document.createElement('span');
+          pre.className = 'tab-dash';
+          pre.textContent = '-';
+          const num = document.createElement('span');
+          num.className = 'tab-num';
+          num.textContent = String(fretVal);
+          const post = document.createElement('span');
+          post.className = 'tab-dash';
+          post.textContent = '-';
+          cell.appendChild(pre);
+          cell.appendChild(num);
+          cell.appendChild(post);
+        }
+        col.appendChild(cell);
+      }
+    }
+
+    ruler.appendChild(col);
+
+    // Insert cursor after this column if cursorPos === idx+1
+    if (cursorPos === idx + 1) ruler.appendChild(makeCursor());
+  });
+
+  // Attach ruler cells to string rows
+  // Actually, we need a different approach: one row per string
+  // Let me rebuild as a table-like structure
+
+  container.innerHTML = '';
+
+  // We'll render each string as its own flex row
+  // and overlay the columns
+
+  // Simpler: render as a block of 6 div rows, each containing spans per column
+  renderTabAsRows(container);
+  updateStatus();
+}
+
+function renderTabAsRows(container) {
+  // Each string gets a row; columns are aligned by making each column span same width
+  // Pre-compute column widths
+  const widths = composition.map(entry => {
+    if (entry.type === 'bar') return 3; // ' | '
+    const maxFret = entry.notes.reduce((mx, v) => {
+      if (v === null) return mx;
+      const w = String(v).length;
+      return w > mx ? w : mx;
+    }, 1);
+    return maxFret + 2; // dash + fret + dash
+  });
+
+  for (let s = 0; s < 6; s++) {
+    const row = document.createElement('div');
+    row.className = 'tab-string-row';
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'tab-string-label';
+    lbl.textContent = STRING_NAMES[s] + '|';
+    lbl.style.width = '24px';
+    lbl.style.flexShrink = '0';
+    lbl.style.color = 'var(--text-dim)';
+    row.appendChild(lbl);
+
+    // Opening dash
+    const odash = document.createElement('span');
+    odash.className = 'tab-dash';
+    odash.textContent = '-';
+    row.appendChild(odash);
+
+    // Cursor at 0 (only on string 0 for visual, but we do it per-string as invisible except s==0)
+    if (cursorPos === 0) {
+      row.appendChild(makeCursorCell(s));
+    }
+
+    composition.forEach((entry, idx) => {
+      const w = widths[idx];
+      const colSpan = document.createElement('span');
+      colSpan.style.display = 'inline-flex';
+      colSpan.style.position = 'relative';
+      colSpan.style.minWidth = (w * 8) + 'px';
+      colSpan.style.cursor = 'pointer';
+
+      if (idx === selectedCol) colSpan.style.background = 'rgba(124,58,237,0.2)';
+      if (inputMode === 'chord' && idx === openChordIdx) colSpan.style.background = 'rgba(76,175,80,0.12)';
+
+      colSpan.dataset.idx = idx;
+      colSpan.dataset.string = s;
+      if (s === 0) { // only add click on top string row to avoid duplicate
+        colSpan.addEventListener('click', (e) => { e.stopPropagation(); onTabColClick(idx); });
+      } else {
+        colSpan.addEventListener('click', (e) => { e.stopPropagation(); onTabColClick(idx); });
+      }
+
+      let text = '';
+      if (entry.type === 'bar') {
+        text = '-|-';
+      } else {
+        const fretVal = entry.notes[s];
+        if (fretVal === null) {
+          text = '-'.repeat(w);
+        } else {
+          const numStr = String(fretVal);
+          text = '-' + numStr + '-';
+          // pad to width
+          while (text.length < w) text += '-';
+        }
+      }
+
+      colSpan.textContent = text;
+      if (entry.type !== 'bar') {
+        const fretVal = entry.notes[s];
+        if (fretVal !== null) {
+          colSpan.style.color = 'var(--text)';
+        } else {
+          colSpan.style.color = 'var(--text-dim)';
+        }
+      } else {
+        colSpan.style.color = '#aaa';
+      }
+
+      row.appendChild(colSpan);
+
+      if (cursorPos === idx + 1) {
+        row.appendChild(makeCursorCell(s));
+      }
+    });
+
+    container.appendChild(row);
+  }
+}
+
+function makeCursorCell(s) {
+  const cur = document.createElement('span');
+  cur.style.color = 'var(--cursor-color)';
+  cur.style.fontWeight = '700';
+  cur.style.userSelect = 'none';
+  cur.style.pointerEvents = 'none';
+  cur.textContent = s === 5 ? '▐' : '▐'; // show on all strings
+  return cur;
+}
+
+function makeCursor() {
+  const cur = document.createElement('span');
+  cur.className = 'tab-cursor';
+  for (let s = 0; s < 6; s++) {
+    const cell = document.createElement('span');
+    cell.className = 'cur-cell';
+    cell.textContent = '▐';
+    cur.appendChild(cell);
+  }
+  return cur;
+}
+
+// ─── Fret Click ───────────────────────────────────────────────────────────────
+
+function onFretClick(stringIdx, fret) {
+  if (inputMode === 'single') {
+    // If a column is selected, overwrite it
+    if (selectedCol >= 0 && composition[selectedCol] && composition[selectedCol].type === 'notes') {
+      composition[selectedCol].notes[stringIdx] = fret;
+      selectedCol = -1;
+      renderTab();
+      saveLocal();
+      return;
+    }
+    // Insert new note column at cursorPos
+    const notes = [null, null, null, null, null, null];
+    notes[stringIdx] = fret;
+    composition.splice(cursorPos, 0, {type: 'notes', notes});
+    cursorPos++;
+    renderTab();
+    saveLocal();
+  } else {
+    // Chord mode: accumulate into open chord beat
+    if (openChordIdx < 0) {
+      // Start a new chord beat at cursorPos
+      const notes = [null, null, null, null, null, null];
+      notes[stringIdx] = fret;
+      composition.splice(cursorPos, 0, {type: 'notes', notes});
+      openChordIdx = cursorPos;
+      // don't advance cursor yet
+    } else {
+      // Add to existing open chord
+      composition[openChordIdx].notes[stringIdx] = fret;
+    }
+    renderTab();
+    saveLocal();
+  }
+}
+
+// ─── Tab Column Click ─────────────────────────────────────────────────────────
+
+function onTabColClick(idx) {
+  if (selectedCol === idx) {
+    selectedCol = -1;
+  } else {
+    selectedCol = idx;
+    cursorPos = idx + 1;
+  }
+  renderTab();
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+
+function toggleMode() {
+  if (inputMode === 'single') {
+    inputMode = 'chord';
+    document.getElementById('mode-btn').textContent = '♬ Chord';
+    document.getElementById('mode-btn').classList.add('active');
+    document.getElementById('next-beat-btn').style.display = '';
+  } else {
+    inputMode = 'single';
+    openChordIdx = -1;
+    document.getElementById('mode-btn').textContent = '♩ Single';
+    document.getElementById('mode-btn').classList.remove('active');
+    document.getElementById('next-beat-btn').style.display = 'none';
+  }
+  renderTab();
+}
+
+function nextBeat() {
+  if (openChordIdx >= 0) {
+    cursorPos = openChordIdx + 1;
+    openChordIdx = -1;
+    renderTab();
+  }
+}
+
+function insertBar() {
+  composition.splice(cursorPos, 0, {type: 'bar'});
+  cursorPos++;
+  renderTab();
+  saveLocal();
+}
+
+function undo() {
+  if (cursorPos > 0) {
+    composition.splice(cursorPos - 1, 1);
+    cursorPos--;
+    if (selectedCol >= cursorPos) selectedCol = -1;
+    if (openChordIdx >= cursorPos) openChordIdx = -1;
+    renderTab();
+    saveLocal();
+  }
+}
+
+function deleteSelected() {
+  if (selectedCol >= 0) {
+    composition.splice(selectedCol, 1);
+    if (cursorPos > selectedCol) cursorPos--;
+    selectedCol = -1;
+    renderTab();
+    saveLocal();
+  }
+}
+
+function setFretCount(val) {
+  fretCount = parseInt(val);
+  buildFretboard();
+}
+
+function setColorMode(mode) {
+  colorMode = mode;
+  ['off','text','fill'].forEach(m => {
+    document.getElementById('color-' + m).classList.toggle('active', m === mode);
+  });
+  document.getElementById('st-colors').textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+  refreshFretboard();
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+
+function parseNoteList(raw) {
+  if (!raw.trim()) return new Set();
+  return new Set(
+    raw.split(',').map(n => {
+      n = n.trim();
+      // handle flats
+      if (ENHARMONICS[n]) n = ENHARMONICS[n];
+      return n;
+    }).filter(n => NOTE_NAMES.includes(n))
+  );
+}
+
+function onNoteSearch(val) {
+  noteSearchRaw = val;
+  chordSearchRaw = '';
+  document.getElementById('chord-search').value = '';
+  highlightedNotes = parseNoteList(val);
+  highlightedPositions = new Set();
+  refreshFretboard();
+}
+
+function onChordSearch(val) {
+  chordSearchRaw = val.trim();
+  noteSearchRaw = '';
+  document.getElementById('note-search').value = '';
+  const chord = CHORDS[chordSearchRaw];
+  if (chord) {
+    // Highlight exact fret positions for this voicing
+    highlightedPositions = new Set();
+    highlightedNotes = new Set();
+    chord.forEach((fret, sIdx) => {
+      if (fret !== null) {
+        highlightedPositions.add(sIdx + ',' + fret);
+      }
+    });
+  } else {
+    highlightedPositions = new Set();
+    highlightedNotes = new Set();
+  }
+  refreshFretboard();
+}
+
+function clearNoteSearch() {
+  noteSearchRaw = '';
+  document.getElementById('note-search').value = '';
+  highlightedNotes = new Set();
+  highlightedPositions = new Set();
+  refreshFretboard();
+}
+
+function clearChordSearch() {
+  chordSearchRaw = '';
+  document.getElementById('chord-search').value = '';
+  highlightedNotes = new Set();
+  highlightedPositions = new Set();
+  refreshFretboard();
+}
+
+// ─── Status Bar ───────────────────────────────────────────────────────────────
+
+function updateStatus() {
+  document.getElementById('st-mode').textContent = inputMode === 'single' ? 'Single Note' : 'Chord';
+  document.getElementById('st-cursor').textContent = cursorPos;
+  document.getElementById('st-beats').textContent = composition.filter(e => e.type === 'notes').length;
+}
+
+// ─── Save / Load ──────────────────────────────────────────────────────────────
+
+function saveLocal() {
+  try {
+    localStorage.setItem('guitar_tab_editor', JSON.stringify({
+      composition, cursorPos, fretCount, colorMode,
+      title: document.getElementById('song-title').value
+    }));
+  } catch(e) {}
+}
+
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem('guitar_tab_editor');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    composition = data.composition || [];
+    cursorPos = data.cursorPos || 0;
+    fretCount = data.fretCount || 18;
+    colorMode = data.colorMode || 'off';
+    if (data.title) document.getElementById('song-title').value = data.title;
+
+    document.getElementById('fret-count').value = fretCount;
+    setColorMode(colorMode);
+    buildFretboard();
+    renderTab();
+  } catch(e) {}
+}
+
+function saveProject() {
+  const data = {
+    title: document.getElementById('song-title').value,
+    composition, cursorPos, fretCount, colorMode,
+    version: '10'
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (data.title || 'tab') + '.json';
+  a.click();
+}
+
+function loadProject(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      composition = data.composition || [];
+      cursorPos = data.cursorPos || 0;
+      fretCount = data.fretCount || 18;
+      colorMode = data.colorMode || 'off';
+      if (data.title) document.getElementById('song-title').value = data.title;
+      document.getElementById('fret-count').value = fretCount;
+      setColorMode(colorMode);
+      buildFretboard();
+      renderTab();
+      saveLocal();
+    } catch(e) { alert('Could not load project file.'); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function saveText() {
+  const title = document.getElementById('song-title').value;
+  let text = title ? title + '\n\n' : '';
+
+  // Build tab as plain text
+  const widths = composition.map(entry => {
+    if (entry.type === 'bar') return 3;
+    const maxFret = entry.notes.reduce((mx, v) => {
+      if (v === null) return mx;
+      const w = String(v).length;
+      return w > mx ? w : mx;
+    }, 1);
+    return maxFret + 2;
+  });
+
+  for (let s = 0; s < 6; s++) {
+    let line = STRING_NAMES[s] + '|-';
+    composition.forEach((entry, idx) => {
+      const w = widths[idx];
+      if (entry.type === 'bar') {
+        line += '-|-';
+      } else {
+        const fretVal = entry.notes[s];
+        if (fretVal === null) {
+          line += '-'.repeat(w);
+        } else {
+          let seg = '-' + String(fretVal) + '-';
+          while (seg.length < w) seg += '-';
+          line += seg;
+        }
+      }
+    });
+    line += '|';
+    text += line + '\n';
+  }
+
+  const blob = new Blob([text], {type: 'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (title || 'tab') + '.txt';
+  a.click();
+}
+
+// ─── Keyboard ─────────────────────────────────────────────────────────────────
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft') {
+    cursorPos = Math.max(0, cursorPos - 1);
+    selectedCol = -1;
+    renderTab();
+  } else if (e.key === 'ArrowRight') {
+    cursorPos = Math.min(composition.length, cursorPos + 1);
+    selectedCol = -1;
+    renderTab();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (selectedCol >= 0) deleteSelected();
+    else undo();
+  }
+});
+
+// Click on tab area (not on a column) to deselect
+document.getElementById('tab-wrap').addEventListener('click', () => {
+  selectedCol = -1;
+  renderTab();
+});
+
+// Song title sync for print
+document.getElementById('song-title').addEventListener('input', function() {
+  document.getElementById('song-title-print').textContent = this.value;
+  saveLocal();
+});
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+buildFretboard();
+loadLocal();
+if (composition.length === 0) renderTab();
+</script>
+</body>
+</html>
